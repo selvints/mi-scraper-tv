@@ -1,19 +1,25 @@
-# 1. Usamos una imagen de Node que ya incluya herramientas de Chrome
+# Usamos la imagen oficial que ya trae Chrome y Node listos
 FROM ghcr.io/puppeteer/puppeteer:21.5.0
 
-# 2. Directorio de trabajo
+# Cambiamos a usuario root para evitar problemas de permisos durante el build
+USER root
+
 WORKDIR /usr/src/app
 
-# 3. Copiamos el package.json para instalar dependencias
+# Copiamos solo los archivos de dependencias primero (mejor para la caché)
 COPY package*.json ./
-RUN npm install
 
-# 4. Copiamos el resto del código de tu proyecto
+# Instalamos SIN descargar Chromium (porque ya viene en la imagen)
+RUN npm install --only=production
+
+# Copiamos el resto del código
 COPY . .
 
-# 5. Puerto que usa Render (por defecto 10000)
-ENV PORT=10000
-EXPOSE 10000
+# Ajustamos permisos para que el usuario de puppeteer pueda ejecutar el código
+RUN chown -R pptruser:pptruser /usr/src/app
 
-# 6. Comando para arrancar la app
+# Volvemos al usuario seguro
+USER pptruser
+
 CMD [ "node", "index.js" ]
+
