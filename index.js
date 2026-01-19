@@ -2,37 +2,49 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 const app = express();
 
+const PORT = process.env.PORT || 10000;
+
 app.get('/get-link', async (req, res) => {
     let browser;
     try {
         browser = await puppeteer.launch({
+            executablePath: '/usr/bin/google-chrome', // Ruta para Docker
             headless: "new",
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage'
+            ]
         });
+
         const page = await browser.newPage();
         
-        // Ir al proxy
+        // 1. Navegar al proxy
         await page.goto('https://www.croxyproxy.com', { waitUntil: 'networkidle2' });
         
-        // Meter la URL
+        // 2. Escribir la URL
+        await page.waitForSelector('#url');
         await page.type('#url', 'https://bsite.net/Spgis/tv/index2.html');
         
-        // Click y esperar carga
+        // 3. Click y esperar a que procese
         await Promise.all([
             page.click('#requestSubmit'),
             page.waitForNavigation({ waitUntil: 'networkidle2' })
         ]);
 
-        // Retornar la URL final donde está el video
+        // 4. Obtener la URL final donde aterrizó el proxy
         const finalUrl = page.url();
-        await browser.close();
         
+        await browser.close();
         res.json({ success: true, link: finalUrl });
+
     } catch (error) {
         if (browser) await browser.close();
+        console.error(error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Servidor listo en puerto ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`🚀 Servidor listo en puerto ${PORT}`);
+});
