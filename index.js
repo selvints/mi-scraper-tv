@@ -1,32 +1,37 @@
-const express = require('express');
-const app = express();
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    // Obtenemos la URL que queremos "tunelizar"
+    const targetUrl = url.searchParams.get("url");
 
-const PORT = process.env.PORT || 10000;
+    if (!targetUrl) {
+      return new Response("Falta el parámetro ?url=", { status: 400 });
+    }
 
-app.get('/proxy-stream', (req, res) => {
-    const streamUrl = req.query.url;
-    if (!streamUrl) return res.status(400).send("Falta la URL");
+    // Cabeceras que imitan a un navegador Chrome real
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Language': 'es-ES,es;q=0.9',
+      'Referer': new URL(targetUrl).origin,
+      'Origin': new URL(targetUrl).origin
+    };
 
-    // En lugar de descargar el video, redirigimos al navegador al origen
-    // Pero antes, enviamos cabeceras CORS para intentar abrir el túnel
-    res.set({
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
-    });
-
-    // Redirección Temporal (307 mantiene el método de la petición)
-    // Esto hace que el navegador intente conectar directamente al link
-    res.redirect(307, streamUrl);
-});
-
-app.get('/get-link', (req, res) => {
-    const target = "http://tecnotv.club/18ene/phpcode/lista0.php?c=64";
-    const proxyUrl = `https://${req.get('host')}/proxy-stream?url=${encodeURIComponent(target)}`;
-    res.json({ success: true, link: proxyUrl });
-});
-
-app.get('/', (req, res) => res.send('Redirector CORS Activo'));
-
-app.listen(PORT, () => console.log(`🚀 Redirector en puerto ${PORT}`));
+    try {
+      const response = await fetch(targetUrl, { headers });
+      
+      // Creamos una nueva respuesta para inyectar los permisos CORS
+      const newHeaders = new Headers(response.headers);
+      newHeaders.set("Access-Control-Allow-Origin", "*");
+      newHeaders.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+      
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders
+      });
+    } catch (e) {
+      return new Response("Error al conectar con el origen: " + e.message, { status: 500 });
+    }
+  }
+};
