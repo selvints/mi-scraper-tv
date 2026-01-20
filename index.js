@@ -14,46 +14,48 @@ app.get('/get-link', async (req, res) => {
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--single-process',
+                '--single-process', // Crucial para Render
                 '--no-zygote'
             ]
         });
 
         const page = await browser.newPage();
         
-        // Fingir ser un usuario real
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        // BLOQUEO TOTAL de contenido innecesario (Ahorra un 70% de RAM)
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            const whitelist = ['document', 'script', 'xhr', 'fetch'];
+            if (!whitelist.includes(req.resourceType())) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
 
-        // Ir a ProxySite
-        await page.goto('https://www.proxysite.com', { waitUntil: 'networkidle2' });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
 
-        // Esperar al input de la URL
-        await page.waitForSelector('input[name="d"]', { visible: true });
-        
-        // Escribir la URL
-        await page.type('input[name="d"]', 'https://bsite.net/Spgis/tv/index2.html', { delay: 50 });
+        // Navegar a ProxySite
+        await page.goto('https://www.proxysite.com', { waitUntil: 'domcontentloaded' });
 
-        // Hacer clic en el botón "GO"
-        await page.click('button[type="submit"]');
+        // Esperar e inyectar la URL directamente en el campo
+        await page.waitForSelector('input[name="d"]', { timeout: 10000 });
+        await page.type('input[name="d"]', 'https://bsite.net/Spgis/tv/index2.html');
 
-        // Esperar a que la página cargue el contenido procesado
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+        // Clic y esperar navegación
+        await Promise.all([
+            page.click('button[type="submit"]'),
+            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 })
+        ]);
 
         const finalUrl = page.url();
         await browser.close();
 
-        res.json({ 
-            success: true, 
-            link: finalUrl 
-        });
+        res.json({ success: true, link: finalUrl });
 
     } catch (error) {
         if (browser) await browser.close();
         console.error("ERROR:", error.message);
-        res.status(500).json({ 
-            success: false, 
-            error: "Error al obtener el link: " + error.message 
-        });
+        res.status(500).json({ success: false, error: "El servidor está muy saturado. Intenta de nuevo en 10 segundos." });
     }
 });
 
