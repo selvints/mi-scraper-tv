@@ -1,8 +1,12 @@
 const express = require('express');
 const axios = require('axios');
+const https = require('https');
 const app = express();
 
 const PORT = process.env.PORT || 10000;
+
+// Agente para ignorar problemas de certificados SSL antiguos
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 app.get('/proxy-stream', async (req, res) => {
     const streamUrl = req.query.url;
@@ -13,33 +17,38 @@ app.get('/proxy-stream', async (req, res) => {
             method: 'get',
             url: streamUrl,
             headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': new URL(streamUrl).origin
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Encoding': 'identity',
+                'Connection': 'keep-alive'
             },
-            responseType: 'arraybuffer' // Bajamos los datos en crudo para decidir qué hacer
+            httpsAgent: httpsAgent,
+            responseType: 'arraybuffer',
+            timeout: 15000 // Aumentamos a 15 segundos
         });
 
         const contentType = response.headers['content-type'] || '';
-        
-        // Configuramos cabeceras CORS básicas para todos
         res.set('Access-Control-Allow-Origin', '*');
 
-        // CASO A: Es una lista de reproducción (Texto M3U8)
+        // Detectar si es una lista de reproducción (m3u8)
         if (contentType.includes('mpegurl') || contentType.includes('application/x-mpegURL') || streamUrl.includes('m3u8')) {
             let content = response.data.toString('utf8');
-            const baseUrl = streamUrl.substring(0, streamUrl.lastIndexOf('/') + 1);
+            
+            // Lógica para reconstruir rutas relativas
+            const urlObj = new URL(streamUrl);
+            const baseUrl = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf('/') + 1);
             const proxyBase = `https://${req.get('host')}/proxy-stream?url=`;
 
-            // Reescritura de líneas
             const lines = content.split('\n').map(line => {
                 line = line.trim();
                 if (line.startsWith('#') || line === '') return line;
                 
-                // Convertir link relativo a absoluto
                 let absoluteUrl;
-                try {
-                    absoluteUrl = new URL(line, baseUrl).href;
-                } catch (e) {
+                if (line.startsWith('http')) {
+                    absoluteUrl = line;
+                } else if (line.startsWith('/')) {
+                    absoluteUrl = urlObj.origin + line;
+                } else {
                     absoluteUrl = baseUrl + line;
                 }
                 
@@ -50,15 +59,16 @@ app.get('/proxy-stream', async (req, res) => {
             return res.send(lines.join('\n'));
         } 
 
-        // CASO B: Es un fragmento de video (.ts) u otro binario
+        // Si es un segmento de video (.ts)
         res.set('Content-Type', contentType);
         res.send(response.data);
 
     } catch (error) {
-        console.error("Error detallado:", error.message);
-        res.status(500).send("Error al procesar el stream: " + error.message);
+        console.error("DEBUG LOG:", error.message);
+        // Si el error es 403 o 404, mostramos el detalle exacto
+        res.status(500).send(`Error: ${error.message} - URL: ${streamUrl}`);
     }
 });
 
-app.get('/', (req, res) => res.send('Proxy CORS HLS v3 Online'));
-app.listen(PORT, () => console.log(`🚀 Proxy activo en puerto ${PORT}`));
+app.get('/', (req, res) => res.send('Proxy Espejo Online'));
+app.listen(PORT, () => console.log(`🚀 Puerto: ${PORT}`));
