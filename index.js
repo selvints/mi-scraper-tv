@@ -8,44 +8,53 @@ app.get('/get-link', async (req, res) => {
     let browser;
     try {
         browser = await puppeteer.launch({
-            executablePath: '/usr/bin/google-chrome', // Ruta para Docker
+            executablePath: '/usr/bin/google-chrome',
             headless: "new",
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage'
+                '--disable-dev-shm-usage',
+                '--single-process',
+                '--no-zygote',
+                '--disable-gpu'
             ]
         });
 
         const page = await browser.newPage();
-        
-        // 1. Navegar al proxy
+
+        // OPTIMIZACIÓN: No cargar imágenes ni CSS pesado para ahorrar RAM
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            if (['image', 'stylesheet', 'font'].includes(req.resourceType())) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
+
+        // Aumentamos el tiempo de espera a 90 segundos
+        await page.setDefaultNavigationTimeout(90000);
+
         await page.goto('https://www.croxyproxy.com', { waitUntil: 'networkidle2' });
         
-        // 2. Escribir la URL
-        await page.waitForSelector('#url');
+        await page.waitForSelector('#url', { visible: true });
         await page.type('#url', 'https://bsite.net/Spgis/tv/index2.html');
-        
-        // 3. Click y esperar a que procese
+
         await Promise.all([
             page.click('#requestSubmit'),
             page.waitForNavigation({ waitUntil: 'networkidle2' })
         ]);
 
-        // 4. Obtener la URL final donde aterrizó el proxy
         const finalUrl = page.url();
-        
         await browser.close();
+        
         res.json({ success: true, link: finalUrl });
 
     } catch (error) {
+        console.error("DETALLE DEL ERROR:", error.message);
         if (browser) await browser.close();
-        console.error(error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor listo en puerto ${PORT}`);
-});
-
+app.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
