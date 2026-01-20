@@ -1,64 +1,55 @@
 const express = require('express');
-const puppeteer = require('puppeteer-core');
+const axios = require('axios');
+const qs = require('qs'); // Para formatear los datos del formulario
 const app = express();
 
 const PORT = process.env.PORT || 10000;
 
 app.get('/get-link', async (req, res) => {
-    let browser;
     try {
-        browser = await puppeteer.launch({
-            executablePath: '/usr/bin/google-chrome',
-            headless: "new",
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--single-process', // Crucial para Render
-                '--no-zygote'
-            ]
+        // Configuramos la URL y el servidor de proxy que queremos usar (us-1, eu-1, etc.)
+        const data = qs.stringify({
+            'd': 'https://bsite.net/Spgis/tv/index2.html',
+            'server-option': 'us1' 
         });
 
-        const page = await browser.newPage();
-        
-        // BLOQUEO TOTAL de contenido innecesario (Ahorra un 70% de RAM)
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            const whitelist = ['document', 'script', 'xhr', 'fetch'];
-            if (!whitelist.includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
+        const config = {
+            method: 'post',
+            url: 'https://www.proxysite.com/includes/add_server.php',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            data: data,
+            maxRedirects: 0, // Evitamos que siga la redirección para capturar la URL
+            validateStatus: function (status) {
+                return status >= 200 && status < 400; // Aceptamos el código 302 de redirección
             }
-        });
+        };
 
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        const response = await axios(config);
 
-        // Navegar a ProxySite
-        await page.goto('https://www.proxysite.com', { waitUntil: 'domcontentloaded' });
+        // El link final suele venir en el encabezado 'location'
+        const finalLink = response.headers.location;
 
-        // Esperar e inyectar la URL directamente en el campo
-        await page.waitForSelector('input[name="d"]', { timeout: 10000 });
-        await page.type('input[name="d"]', 'https://bsite.net/Spgis/tv/index2.html');
-
-        // Clic y esperar navegación
-        await Promise.all([
-            page.click('button[type="submit"]'),
-            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 })
-        ]);
-
-        const finalUrl = page.url();
-        await browser.close();
-
-        res.json({ success: true, link: finalUrl });
+        if (finalLink) {
+            res.json({
+                success: true,
+                link: finalLink
+            });
+        } else {
+            throw new Error("No se pudo obtener la redirección del proxy");
+        }
 
     } catch (error) {
-        if (browser) await browser.close();
         console.error("ERROR:", error.message);
-        res.status(500).json({ success: false, error: "El servidor está muy saturado. Intenta de nuevo en 10 segundos." });
+        res.status(500).json({
+            success: false,
+            error: "Error ligero: " + error.message
+        });
     }
 });
 
-app.get('/', (req, res) => res.send('Server Online - Usa /get-link'));
+app.get('/', (req, res) => res.send('Servidor Ligero Online'));
 
-app.listen(PORT, () => console.log(`🚀 Puerto: ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Corriendo en puerto ${PORT}`));
