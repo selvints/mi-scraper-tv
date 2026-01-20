@@ -21,39 +21,42 @@ app.get('/get-link', async (req, res) => {
 
         const page = await browser.newPage();
         
-        // 1. User Agent muy específico de Chrome moderno
-        await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        // Fingir ser un usuario real
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // 2. Ir a la web
-        await page.goto('https://www.croxyproxy.com', { waitUntil: 'networkidle2' });
+        // Ir a ProxySite
+        await page.goto('https://www.proxysite.com', { waitUntil: 'networkidle2' });
 
-        // 3. Esperar y escribir la URL (Simulando escritura humana)
-        await page.waitForSelector('#url', { visible: true });
-        await page.focus('#url');
-        await page.type('#url', 'https://bsite.net/Spgis/tv/index2.html', { delay: 100 });
+        // Esperar al input de la URL
+        await page.waitForSelector('input[name="d"]', { visible: true });
+        
+        // Escribir la URL
+        await page.type('input[name="d"]', 'https://bsite.net/Spgis/tv/index2.html', { delay: 50 });
 
-        // 4. En lugar de hacer clic directamente, presionamos la tecla ENTER
-        // Esto a veces evita que el sistema de seguridad detecte el clic automático
-        await page.keyboard.press('Enter');
+        // Hacer clic en el botón "GO"
+        await page.click('button[type="submit"]');
 
-        // 5. Esperar a que la URL cambie
-        // Si no cambia en 20 segundos, lanzará error
-        await page.waitForFunction(() => {
-            return window.location.href.includes('proxy.com/_') || window.location.href.includes('php?u=');
-        }, { timeout: 20000 });
+        // Esperar a que la página cargue el contenido procesado
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
 
         const finalUrl = page.url();
         await browser.close();
 
-        res.json({ success: true, link: finalUrl });
+        res.json({ 
+            success: true, 
+            link: finalUrl 
+        });
 
     } catch (error) {
         if (browser) await browser.close();
         console.error("ERROR:", error.message);
-        res.status(500).json({ success: false, error: "El proxy tardó demasiado o detectó el bot. Intenta de nuevo." });
+        res.status(500).json({ 
+            success: false, 
+            error: "Error al obtener el link: " + error.message 
+        });
     }
 });
 
-app.get('/', (req, res) => res.send('Server Online'));
+app.get('/', (req, res) => res.send('Server Online - Usa /get-link'));
 
 app.listen(PORT, () => console.log(`🚀 Puerto: ${PORT}`));
