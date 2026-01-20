@@ -1,56 +1,55 @@
 const express = require('express');
 const axios = require('axios');
-const qs = require('qs');
 const app = express();
 
 const PORT = process.env.PORT || 10000;
 
-app.get('/get-link', async (req, res) => {
+// 1. Ruta para obtener el enlace procesado
+app.get('/get-link', (req, res) => {
+    // La URL de tu servidor en Render + la ruta del proxy
+    const baseUrl = `https://${req.get('host')}/proxy-stream?url=`;
+    
+    // Aquí pondrías el m3u8 original (o lo extraes dinámicamente)
+    const originalStream = "https://tu-enlace-m3u8-real.com/video.m3u8"; 
+    
+    res.json({
+        success: true,
+        link: baseUrl + encodeURIComponent(originalStream)
+    });
+});
+
+// 2. El "Túnel" que elimina el bloqueo de CORS
+app.get('/proxy-stream', async (req, res) => {
+    const streamUrl = req.query.url;
+
+    if (!streamUrl) return res.status(400).send("Falta la URL del stream");
+
     try {
-        const data = qs.stringify({
-            'd': 'https://bsite.net/Spgis/tv/index2.html',
-            'server-option': 'us1' 
+        const response = await axios({
+            method: 'get',
+            url: streamUrl,
+            responseType: 'stream',
+            headers: {
+                'User-Agent': 'Mozilla/5.0'
+            }
         });
 
-        const config = {
-            method: 'post',
-            url: 'https://www.proxysite.com/includes/add_server.php',
-            headers: { 
-                'authority': 'www.proxysite.com',
-                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'cache-control': 'max-age=0',
-                'content-type': 'application/x-www-form-urlencoded',
-                'origin': 'https://www.proxysite.com',
-                'referer': 'https://www.proxysite.com/',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                // Simulamos una cookie de sesión inicial
-                'cookie': 'PS_SESSID=session_placeholder; __cf_bm=placeholder'
-            },
-            data: data,
-            maxRedirects: 0,
-            validateStatus: (status) => status >= 200 && status < 400
-        };
+        // INYECTAMOS LOS PERMISOS CORS
+        res.set({
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET',
+            'Content-Type': response.headers['content-type'] || 'application/vnd.apple.mpegurl'
+        });
 
-        const response = await axios(config);
-        const finalLink = response.headers.location;
-
-        if (finalLink) {
-            // Si el link es relativo, le pegamos la base
-            const fullLink = finalLink.startsWith('http') ? finalLink : `https://www.proxysite.com${finalLink}`;
-            res.json({ success: true, link: fullLink });
-        } else {
-            res.status(404).json({ success: false, error: "No se capturó la redirección. Intenta de nuevo." });
-        }
+        // Reenviamos el video al navegador
+        response.data.pipe(res);
 
     } catch (error) {
-        console.error("ERROR 403:", error.message);
-        res.status(error.response?.status || 500).json({ 
-            success: false, 
-            error: "El proxy bloqueó la conexión (403). Estamos trabajando en saltar el bloqueo." 
-        });
+        console.error("Error en el túnel:", error.message);
+        res.status(500).send("Error al procesar el stream");
     }
 });
 
-app.get('/', (req, res) => res.send('Servidor Ligero Activo'));
+app.get('/', (req, res) => res.send('Proxy CORS Activo'));
 
-app.listen(PORT, () => console.log(`🚀 Puerto: ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Proxy funcionando en puerto ${PORT}`));
